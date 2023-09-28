@@ -1,0 +1,155 @@
+---
+title: "Big Data Analysis FINAL2"
+author: 7109018022
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+data source : https://www.kaggle.com/CooperUnion/anime-recommendations-database
+
+Load package
+```{r}
+library(magrittr) #%>%
+library(data.table) #fread
+library(dplyr)
+library(sparklyr)
+library(devtools) #sinkr
+library(sinkr) #iterative PCA
+```
+
+#data
+```{r}
+data = fread("./anime.csv", stringsAsFactors = T, encoding = "UTF-8")
+head(data)
+```
+
+#clean data
+```{r}
+data$genre = as.character(data$genre)
+n = unlist(count(data)) #行數
+
+for ( i in 1:n ){
+  a = as.vector(unlist(strsplit(data[i]$genre,"[,]")))
+  if ( length(a) > 1 ){
+    data[i]$genre = a[1]
+    for ( j in 2:length(a) ){
+      b = data[i,]
+      b$genre = a[j]
+      data = rbind(data,b)
+    }
+  }
+}
+data$genre = as.factor(data$genre)
+```
+
+examine NULL data
+```{r}
+sum(is.na(data))
+sum(is.na(data$anime_id)) #動漫ID
+sum(is.na(data$name)) #動漫名
+sum(is.na(data$genre)) #動漫的類型(以逗號區隔)
+sum(is.na(data$type)) #OVA、電影、電視...
+sum(is.na(data$episodes)) #級數
+sum(is.na(data$rating)) #評價
+sum(is.na(data$members)) #有幾個人評論
+```
+
+deal with missing value
+
+PCA
+```{r}
+d = data %>%  arrange(anime_id) %>% 
+  mutate(across(everything() , as.numeric))  #convert to numeric
+pca = prcomp(formula = ~ genre + type + episodes + members , data = d , scale = TRUE)
+pca
+```
+
+Scree plot
+```{r}
+plot(pca , type = "line" )
+abline(h=1, col="blue")
+```
+
+Thus, select Q = 2
+
+iterative PCA
+```{r}
+Sys.setenv(JAVA_HOME='C:\\Program Files\\Java\\jdk1.8.0_111\\jre') #Positioning JAVA
+sc <- spark_connect(master="local") #Which host SPARK to choose
+
+spark.df = sdf_copy_to(sc, d , overwrite = TRUE)  # convert R_dataFrame to spark_sql_dataFrame
+x = spark.df %>%
+  sdf_collect() %>% as.data.frame() %>% as.matrix()
+xa = dineof(x,2)$Xa
+X = as.data.frame(xa)
+head(X)
+sum(is.na(X))
+
+spark_disconnect(sc)
+```
+
+#regression analysis
+
+#Elastic net model
+```{r}
+library(caret)
+library(glmnet)
+
+train = sample(c(T,T,T,T,F),nrow(data),rep=T) ##80/20 train/test split 
+test = (!train)
+
+y = X %>% select(rating) %>% as.matrix()
+v = X %>% select(genre,type,episodes,members) %>% as.matrix()
+
+set.seed(42)
+cv_10 = trainControl(method = "cv", number = 10)
+```
+
+model
+```{r}
+hit_elnet = train(
+  rating ~ genre + type + episodes + members, data = X[train,] ,
+  method = "glmnet",
+  trControl = cv_10
+)
+hit_elnet
+```
+
+expanding the feature space
+```{r}
+hit_elnet_int = train(
+  rating ~ (genre + type + episodes + members)^2 , data = X[train,] ,
+  method = "glmnet",
+  trControl = cv_10,
+  tuneLength = 10
+)
+hit_elnet_int
+```
+
+select alpha and lambda
+```{r}
+get_best_result = function(caret_fit) {
+  best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
+  best_result = caret_fit$results[best, ]
+  rownames(best_result) = NULL
+  best_result
+}
+get_best_result(hit_elnet_int)
+```
+
+use alpha = 0.2 , lambda = 0.0001803215
+
+MSE
+```{r}
+glmnet.fit = glmnet(v[train,] , y[train,] , alpha = get_best_result(hit_elnet_int)[1] , lambda = get_best_result(hit_elnet_int)[2])
+glmnet.pred = predict(glmnet.fit,s = get_best_result(hit_elnet_int)[2] , v[test,])
+mean((glmnet.pred - X$rating[test])^2)
+```
+```{r pressure, echo=FALSE}
+```
