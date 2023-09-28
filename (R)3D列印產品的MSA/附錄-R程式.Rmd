@@ -1,0 +1,132 @@
+---
+title: "3D Printing data"
+author: WEI, LIANG YU
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### DATA
+```{r}
+data <- read.csv("gauge.csv",header=T)
+data <- data[1:180,1:11]
+y1 <- data[,3] #Diameter
+y2 <- data[,4] #Length
+y3 <- data[,5] #Width
+y4 <- data[,6] #Left
+y5 <- data[,7] #Left-Center
+y6 <- data[,8] #Center
+y7 <- data[,9] #Right
+y8 <- data[,10] #Right-Center
+y9 <- data[,11] #Height
+
+P <- factor(data[,1]) #產品序號
+p = max(as.numeric(P)) #產品總數量 = 最大產品序號 = 20
+
+O <- factor(data[,2]) #檢測人員編號
+o = max(as.numeric(O)) #檢測人員數 = 最大檢測人員編號 = 3
+
+# n = 每人測量次數 = 1號產品被檢測次數 / 檢測人員數 = 3
+n = length(which(P == '1')) / o
+
+cat("產品數量 = ", p, "\n")
+cat("檢測人員數 = ", o, "\n")
+cat("每人測量次數 = ", n)
+```
+
+### GRR amd P/T and SNR and DR function
+```{r}
+calculate.size = function(x){
+  rlt<-aov(x~P*O)
+  summary(rlt)
+  MSp <- summary(rlt)[[1]][1, 'Mean Sq']
+  MSo <- summary(rlt)[[1]][2, 'Mean Sq']
+  MSpo <- summary(rlt)[[1]][3, 'Mean Sq']
+  MSe <- summary(rlt)[[1]][4, 'Mean Sq']
+  
+  #sigma-squared如果小於零，直接令成0
+  if ( (MSp - MSpo)/(o*n)  <= 0) { sigp = 0 }
+  else { sigp = (MSp - MSpo)/(o*n) }
+  
+  if ( (MSo - MSpo)/(p*n) <= 0) { sigo = 0 }
+  else { sigo = (MSo - MSpo)/(p*n) }
+  
+  if ( (MSpo - MSe)/n <= 0) { sigpo = 0 }
+  else { sigpo = (MSpo - MSe)/n }
+  
+  sigmse <- MSe
+  
+  #### sigma square gauge = sigma square reproducibility + sigma square repeatability ####
+  sigrepro <- sigo + sigpo
+  sigrepeat <- sigmse
+  siggau <- sigrepro + sigrepeat
+  
+  #### P/T ratio = (k*sigma square Gauge) / (USL - LSL) ####
+  USL_LSL <- 0.5
+  k1 <- 5.15 #95%
+  k2 <- 6 #99%
+  
+  P_T_k1 <- k1*sqrt(siggau)/USL_LSL
+  P_T_k2 <- k2*sqrt(siggau)/USL_LSL
+  
+  #### SNR (signal-to-noise-ratio) = sqrt( (2*rho_p) / (1-rho_p) ) ####
+  
+  # sigma square total = sigma square P + sigma square Gauge
+  sigmatotal <- sigp + siggau
+  
+  # rho P = sigma square P / sigma square total = 1 - rho M
+  rhop <- sigp / sigmatotal
+  
+  # rho M = sigma square Gauge / sigma square total
+  rhom <- siggau / sigmatotal
+  
+  SNR <- sqrt(2*rhop/(1-rhop))
+  
+  #### Discrimination ratio (DR) ####
+  DR <- (1+rhop)/(1-rhop)
+  
+  return(list(sigrepro = sigrepro, sigrepeat = sigrepeat, siggau = siggau, sigmatotal = sigmatotal, 
+              P_T_k1 = P_T_k1, P_T_k2 = P_T_k2, rhop = rhop, rhom = rhom, SNR = SNR, DR = DR))
+}
+
+```
+
+### Result
+```{r}
+result <- matrix(0,nrow = 9,ncol = 10)
+
+for (i in 1:10) 
+{
+  result[1,i]<-calculate.size(y1)[[i]]
+  result[2,i]<-calculate.size(y2)[[i]]
+  result[3,i]<-calculate.size(y3)[[i]]
+  result[4,i]<-calculate.size(y4)[[i]]
+  result[5,i]<-calculate.size(y5)[[i]]
+  result[6,i]<-calculate.size(y6)[[i]]
+  result[7,i]<-calculate.size(y7)[[i]]
+  result[8,i]<-calculate.size(y8)[[i]]
+  result[9,i]<-calculate.size(y9)[[i]]
+}
+
+result <- as.data.frame(round(result,4))
+colnames(result) <- c("sigma-squared reproducibility","sigma-squared repeatability","sigma-squared gauge","sigma-squared total","P/T ratio (k=5.15)","P/T ratio (k=6)","rhop","rhom","SNR","DR")
+rownames(result) <- c("diameter","length","width","left","left-center","center","right","right-center","height")
+result <- as.data.frame(result)
+result
+```
+
+### Conclusion
+
+  Measurement systems analysis(MSA) aims to test if the measurement process is capable.
+If the measurement process is capable, that needs to P/T Ratio <= 0.1, SNR >= 0.5, DR >= 4.
+
+  We guess the reason why all the indicators are not standardized is that the measurement data itself has a very large error, and the average allometric distance of each place to be measured is on the large side, so this gauge is not capable.
+
+```{r pressure, echo=FALSE}
+```
