@@ -1,0 +1,199 @@
+---
+title: "ice cream and frog data"
+author: WEI, LIANG YU
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Ice Cream
+#### DATA
+```{r}
+data<-read.csv("final.csv",header=T)
+y<-data[,2]
+A<-factor(data[,3]) #Time 
+B<-factor(data[,4]) #Milk Type
+block<-factor(data[,5]) #user
+data
+```
+
+#### BOX PLOT
+```{r}
+par(mfrow=c(2,2))
+plot(A,y,xlab="Time",ylab="ML") #Time
+plot(B,y,xlab="Type",ylab="ML") #Milk Type
+plot(block,y,xlab="Block(user 1 and user 2)",ylab="ICE") #user 1 and 2
+par(mfrow=c(1,1))
+```
+
+#### QQPLOT
+```{r}
+par(mfrow=c(2,2))
+plot(as.numeric(A),y,xlab="Time",ylab="ICE")
+plot(as.numeric(B),y,xlab="Water",ylab="ICE")
+plot(as.numeric(block),y,xlab="Block(user 1 and user 2)",ylab="ICE")
+par(mfrow=c(1,1))
+```
+
+#### ANOVA analysis
+```{r}
+rlt<-aov(y~A*B+block)
+summary(rlt)
+```
+ALL P-Value > 0.05, thus these factor is nonsignificant.
+
+#### Residual Plot
+```{r}
+e<-rlt$residuals
+y.hat<-rlt$fitted.values
+ord<-data[,1]
+
+par(mfrow=c(2,2))
+
+plot(ord,e,xlab="Run order",ylab="eij",main = "Independency" )
+abline(0,0)
+
+plot(y.hat,e,xlab="y.hat",ylab="eij" , main = "Constant Variance")
+abline(0,0)
+
+qqnorm(e)
+
+par(mfrow=c(1,1))
+
+```
+The points are not uniformly distributed at 0, so Non-Constant Variance.
+ 
+#### shapiro test
+```{r}
+shapiro.test(e)
+```
+
+# Frog
+
+#### Data
+```{r}
+data<-read.csv("frog.csv",header=T)
+
+y<-data[,2]
+A<-factor(data[,3]) #number of pin
+B<-factor(data[,4]) #Type(Big and Small)
+C<-factor(data[,5]) #Fold
+data
+```
+
+#### Frog BOX PLOT
+```{r}
+par(mfrow=c(2,2))
+plot(A,y,xlab="Number of Pin",ylab="distance")
+plot(B,y,xlab="Type(Big and Small)",ylab="distance") # type1: small frog, type2: big frog
+plot(C,y,xlab="Fold",ylab="distance")
+par(mfrow=c(1,1))
+```
+
+#### Frog QQ PLOT
+```{r}
+par(mfrow=c(2,2))
+plot(as.numeric(A),y,xlab="Number of Pin",ylab="distance")
+plot(as.numeric(B),y,xlab="Type(Big and Small)",ylab="distance")
+plot(as.numeric(C),y,xlab="Fold",ylab="distance")
+par(mfrow=c(1,1))
+```
+
+#### ANOVA analysis
+```{r}
+rlt<-aov(y~A*B*C)
+summary(rlt)
+```
+The P-value of factor B(frog size), interaction AB, interaction AC and interaction BC is smaller than 0.05. 
+That means these factor are nonsignificant.
+
+#### PLOT
+```{r}
+par(mfrow=c(2,3))
+
+Ai.bar<-tapply(y,A,mean)
+plot(names(Ai.bar),Ai.bar,type="b",xlab="A",ylab="Average y",ylim=c(10,25))
+
+Bi.bar<-tapply(y,B,mean)
+plot(names(Bi.bar),Bi.bar,type="b",xlab="B",ylab="Average y",ylim=c(10,25))
+
+Ci.bar<-tapply(y,C,mean)
+plot(names(Ci.bar),Ci.bar,type="b",xlab="C",ylab="Average y",ylim=c(10,25))
+
+interaction.plot(A,B,y,xlab="A",ylab="Average y",ylim=c(5,30))
+interaction.plot(A,C,y,xlab="A",ylab="Average y",ylim=c(5,30))
+interaction.plot(B,C,y,xlab="B",ylab="Average y",ylim=c(5,30))
+
+par(mfrow=c(1,1))
+```
+The degree of influence of each factor is A>B>C.
+
+#### Residual PLOT
+```{r}
+e<-rlt$residuals
+y.hat<-rlt$fitted.values
+ord<-data[,1]
+
+par(mfrow=c(2,2))
+
+plot(ord,e,xlab="Run order",ylab="eij",main = "Independency")
+abline(0,0)
+
+plot(y.hat,e,xlab="y.hat",ylab="eij", main = "Constant Variance")
+abline(0,0)
+
+qqnorm(e)
+
+
+par(mfrow=c(1,1))
+```
+
+#### shapiro test
+```{r}
+shapiro.test(e)
+```
+### Delete the factor B(frog size), interaction AB, interaction AC and interaction BC.
+#### (After) ANOVA analysis
+```{r}
+rlt.1<-aov(y~A+C)
+summary(rlt.1)
+```
+
+#### (After) Residual PLOT
+```{r}
+e<-rlt.1$residuals
+y.hat<-rlt.1$fitted.values
+ord<-data[,1]
+
+par(mfrow=c(2,2))
+
+plot(ord,e,xlab="Run order",ylab="eij",main = "Independency")
+abline(0,0)
+
+plot(y.hat,e,xlab="y.hat",ylab="eij", main = "Constant Variance")
+abline(0,0)
+
+qqnorm(e)
+
+par(mfrow=c(1,1))
+```
+
+#### (After) shapiro test
+```{r}
+shapiro.test(e)
+```
+
+### Conclusion
+```{r}
+cbind(A,B,C,y.hat)
+```
+The big frog with one fold and small frog with one fold are the farthest.
+
+```{r pressure, echo=FALSE}
+```
